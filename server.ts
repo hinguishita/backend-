@@ -9,7 +9,7 @@ import { GoogleGenAI } from "@google/genai";
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || "hari-anand-smruti-secret";
 
 app.use(cors());
@@ -83,28 +83,13 @@ const seedDecorations = [
   { title: "My Sacred Smruti 7", theme: "Spiritual", haar_style: "Traditional Design", image_url: "https://pub-1407f82391df4ab1951418d04be76914.r2.dev/uploads/a8349505-657d-4539-8909-7b777efd5f7b.png", category: "Traditional" },
 ];
 
-const seedUsers = [
-  { name: "Hari Anand", email: "hari@example.com", password: "password123", bio: "Devotional seeker and decorator.", profile_image: "https://ui-avatars.com/api/?name=Hari+Anand&background=f59e0b&color=fff" },
-  { name: "Admin", email: "admin@example.com", password: "adminpassword", bio: "System administrator.", profile_image: "https://ui-avatars.com/api/?name=Admin&background=1f2937&color=fff" }
-];
+// Seed Data (Moved users to env or manual registration)
 
 const seed = async () => {
     // Seed decorations (clear first to update URLs)
     db.prepare("DELETE FROM decorations").run();
     const insertDeco = db.prepare("INSERT INTO decorations (title, theme, haar_style, image_url, category) VALUES (?, ?, ?, ?, ?)");
     seedDecorations.forEach(d => insertDeco.run(d.title, d.theme, d.haar_style, d.image_url, d.category));
-
-    // Seed users if empty
-    const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get() as any;
-    if (userCount.count === 0) {
-        console.log("Seeding users...");
-        const insertUser = db.prepare("INSERT INTO users (name, email, password, bio, profile_image) VALUES (?, ?, ?, ?, ?)");
-        for (const u of seedUsers) {
-            const hashedPassword = await bcrypt.hash(u.password, 10);
-            insertUser.run(u.name, u.email, hashedPassword, u.bio, u.profile_image);
-        }
-        console.log("Users seeded successfully.");
-    }
 };
 seed();
 
@@ -146,12 +131,33 @@ app.post("/api/auth/login", async (req, res) => {
   if (!email || !password) {
     return res.status(400).json({ error: "Email and password are required" });
   }
+
+  console.log("LOGIN ATTEMPT:", email, password);
+
   const user = db.prepare("SELECT * FROM users WHERE email = ?").get(email) as any;
-  if (!user || !(await bcrypt.compare(password, user.password))) {
+
+  console.log("USER FOUND:", user);
+
+  if (!user) {
+    return res.status(404).json({ error: "User not found" });
+  }
+
+  const isMatch = await bcrypt.compare(password, user.password);
+
+  console.log("PASSWORD MATCH:", isMatch);
+
+  if (!isMatch) {
     return res.status(401).json({ error: "Invalid credentials" });
   }
+
   const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET);
   res.json({ token, user: { id: user.id, name: user.name, email: user.email, bio: user.bio, profile_image: user.profile_image } });
+});
+
+app.post("/api/auth/guest", (req, res) => {
+  const guestUser = { id: 0, name: "Guest User", email: "guest@example.com" };
+  const token = jwt.sign(guestUser, JWT_SECRET);
+  res.json({ token, user: { ...guestUser, bio: "Free Access Account", profile_image: "https://ui-avatars.com/api/?name=Guest+User&background=6b7280&color=fff" } });
 });
 
 app.get("/api/users", (req, res) => {
