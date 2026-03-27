@@ -15,6 +15,12 @@ const JWT_SECRET = process.env.JWT_SECRET || "hari-anand-smruti-secret";
 app.use(cors());
 app.use(express.json());
 
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+  next();
+});
+
 // Initialize Database
 const db = new Database("database.sqlite");
 
@@ -87,6 +93,7 @@ const seedDecorations = [
 
 const seed = async () => {
     // Seed decorations (clear first to update URLs)
+    db.prepare("DELETE FROM saved_images").run();
     db.prepare("DELETE FROM decorations").run();
     const insertDeco = db.prepare("INSERT INTO decorations (title, theme, haar_style, image_url, category) VALUES (?, ?, ?, ?, ?)");
     seedDecorations.forEach(d => insertDeco.run(d.title, d.theme, d.haar_style, d.image_url, d.category));
@@ -240,7 +247,10 @@ app.post("/api/timeline/generate", authenticateToken, async (req: any, res) => {
   const { eventDate, eventType } = req.body;
   
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+    if (!process.env.GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY is not set");
+    }
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     const prompt = `Generate a detailed preparation timeline for a Guruhari Padhramni event on ${eventDate}. The theme is ${eventType}. 
     Provide a list of tasks with recommended days before the event (e.g., "7 days before", "1 day before", "On the day"). 
     Format the output as a JSON array of objects with 'day' and 'task' properties.`;
@@ -274,4 +284,14 @@ app.get("/api/user/timelines", authenticateToken, (req: any, res) => {
 // Start Server
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`Database initialized and seeded.`);
+});
+
+// Error handling for uncaught errors
+process.on("uncaughtException", (err) => {
+  console.error("UNCAUGHT EXCEPTION:", err);
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("UNHANDLED REJECTION at:", promise, "reason:", reason);
 });
